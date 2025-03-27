@@ -34,7 +34,8 @@ class ConditionalCFM(BASECFM):
         self.lock = threading.Lock()
 
     @torch.inference_mode()
-    def forward(self, mu, mask, n_timesteps, temperature=1.0, spks=None, cond=None, prompt_len=0, flow_cache=torch.zeros(1, 80, 0, 2)):
+    def forward(self, mu, mask, n_timesteps, temperature=1.0, spks=None, cond=None, prompt_len=0,
+                flow_cache=torch.zeros(1, 80, 0, 2)):
         """Forward diffusion
 
         Args:
@@ -125,21 +126,30 @@ class ConditionalCFM(BASECFM):
         if isinstance(self.estimator, torch.nn.Module):
             return self.estimator.forward(x, mask, mu, t, spks, cond)
         else:
-            with self.lock:
-                self.estimator.set_input_shape('x', (2, 80, x.size(2)))
-                self.estimator.set_input_shape('mask', (2, 1, x.size(2)))
-                self.estimator.set_input_shape('mu', (2, 80, x.size(2)))
-                self.estimator.set_input_shape('t', (2,))
-                self.estimator.set_input_shape('spks', (2, 80))
-                self.estimator.set_input_shape('cond', (2, 80, x.size(2)))
-                # run trt engine
-                self.estimator.execute_v2([x.contiguous().data_ptr(),
-                                           mask.contiguous().data_ptr(),
-                                           mu.contiguous().data_ptr(),
-                                           t.contiguous().data_ptr(),
-                                           spks.contiguous().data_ptr(),
-                                           cond.contiguous().data_ptr(),
-                                           x.data_ptr()])
+            estimator, engine = self.estimator.acquire_estimator()
+            estimator.set_input_shape('x', (2, 80, x.size(2)))
+            estimator.set_input_shape('mask', (2, 1, x.size(2)))
+            estimator.set_input_shape('mu', (2, 80, x.size(2)))
+            estimator.set_input_shape('t', (2,))
+            estimator.set_input_shape('spks', (2, 80))
+            estimator.set_input_shape('cond', (2, 80, x.size(2)))
+
+            data_ptrs = [x.contiguous().data_ptr(),
+                         mask.contiguous().data_ptr(),
+                         mu.contiguous().data_ptr(),
+                         t.contiguous().data_ptr(),
+                         spks.contiguous().data_ptr(),
+                         cond.contiguous().data_ptr(),
+                         x.data_ptr()]
+
+            for idx, data_ptr in enumerate(data_ptrs):
+                estimator.set_tensor_address(engine.get_tensor_name(idx), data_ptr)
+
+            # run trt engine
+            estimator.execute_async_v3(torch.cuda.current_stream().cuda_stream)
+
+            torch.cuda.current_stream().synchronize()
+            self.estimator.release_estimator(estimator)
             return x
 
     def compute_loss(self, x1, mask, mu, spks=None, cond=None):
