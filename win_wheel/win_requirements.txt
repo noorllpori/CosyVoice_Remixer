@@ -1,5 +1,6 @@
 --extra-index-url https://pypi.nvidia.com/
 
+pynini==2.1.6.post1
 pydantic==2.10.6
 torch==2.5.1
 torchaudio==2.5.1
@@ -33,7 +34,7 @@ rich==13.7.1
 soundfile==0.12.1
 tensorboard==2.14.0
 wget==3.2
-WeTextProcessing==1.0.3
+# WeTextProcessing==1.0.4.1
 
 # tensorrt
 tensorrt-cu12==10.0.1
