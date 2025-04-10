@@ -54,3 +54,4 @@ pretrained_models/*
 async_cosyvoice
 
 tp
+test.py

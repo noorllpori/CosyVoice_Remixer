@@ -44,10 +44,16 @@ if %errorlevel% neq 0 (
 )
 
 pip install -r win_wheel/win_requirements.txt
+pip install https://pypi.tuna.tsinghua.edu.cn/packages/0e/1d/c435b8dcc980525f2bbaba70ecc3f4a82b5d2a4347cc8281660db67541d1/onnxruntime_gpu-1.21.0-cp310-cp310-win_amd64.whl
 if %errorlevel% neq 0 (
     echo 安装 requirements 失败，脚本将退出。
     pause
     exit /b
 )
+
+mkdir pretrained_models
+modelscope download --model iic/CosyVoice2-0.5B --local_dir pretrained_models/CosyVoice2-0.5B  
+
+xcopy /E /I async_cosyvoice\CosyVoice2-0.5B\* pretrained_models\CosyVoice2-0.5B\
 
 pause
