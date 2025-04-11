@@ -1,0 +1,4 @@
+[ZoneTransfer]
+ZoneId=3
+ReferrerUrl=https://download.pytorch.org/whl/torchaudio/
+HostUrl=https://download.pytorch.org/whl/cu124/torchaudio-2.5.1%2Bcu124-cp310-cp310-linux_x86_64.whl#sha256=097593edf32f0a8450aba7822b8097d2f2476fe96c0ab99331d12c347003180b

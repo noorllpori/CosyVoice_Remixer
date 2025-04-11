@@ -92,6 +92,7 @@ class CosyVoiceModel:
             raise ValueError('{} is empty file, delete it and export again!'.format(flow_decoder_estimator_model))
         del self.flow.decoder.estimator
         import tensorrt as trt
+        trt.init_libnvinfer_plugins(None, "")
         with open(flow_decoder_estimator_model, 'rb') as f:
             self.flow.decoder.estimator_engine = trt.Runtime(trt.Logger(trt.Logger.INFO)).deserialize_cuda_engine(f.read())
         if self.flow.decoder.estimator_engine is None:

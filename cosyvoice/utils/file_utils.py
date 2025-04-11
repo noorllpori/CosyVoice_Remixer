@@ -46,14 +46,16 @@ def load_wav(wav, target_sr):
         speech = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sr)(speech)
     return speech
 
+def get_trt_kwargs():
+    min_shape = [(2, 80, 4), (2, 1, 4), (2, 80, 4), (2, 80, 4), (1, 4, 2, 0, 512, 2), (12, 4, 2, 0, 512, 2), (1, 4, 2, 0, 512, 2)]
+    opt_shape = [(2, 80, 200), (2, 1, 200), (2, 80, 200), (2, 80, 200), (1, 4, 2, 100, 512, 2), (12, 4, 2, 100, 512, 2), (1, 4, 2, 100, 512, 2)]
+    max_shape = [(2, 80, 1500), (2, 1, 1500), (2, 80, 1500), (2, 80, 1500), (1, 4, 2, 200, 512, 2), (12, 4, 2, 200, 512, 2), (1, 4, 2, 200, 512, 2)]
+    input_names = ["x", "mask", "mu", "cond", 'down_blocks_kv_cache', 'mid_blocks_kv_cache', 'up_blocks_kv_cache']
+    return {'min_shape': min_shape, 'opt_shape': opt_shape, 'max_shape': max_shape, 'input_names': input_names}
+
 
 def convert_onnx_to_trt(trt_model, onnx_model, fp16):
     import tensorrt as trt
-    _min_shape = [(2, 80, 4), (2, 1, 4), (2, 80, 4), (2,), (2, 80), (2, 80, 4)]
-    _opt_shape = [(2, 80, 193), (2, 1, 193), (2, 80, 193), (2,), (2, 80), (2, 80, 193)]
-    _max_shape = [(2, 80, 6800), (2, 1, 6800), (2, 80, 6800), (2,), (2, 80), (2, 80, 6800)]
-    input_names = ["x", "mask", "mu", "t", "spks", "cond"]
-
     logging.info("Converting onnx to trt...")
     network_flags = 1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
     logger = trt.Logger(trt.Logger.INFO)
@@ -61,7 +63,7 @@ def convert_onnx_to_trt(trt_model, onnx_model, fp16):
     network = builder.create_network(network_flags)
     parser = trt.OnnxParser(network, logger)
     config = builder.create_builder_config()
-    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 30)  # 1GB
+    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 33)  # 8GB
     if fp16:
         config.set_flag(trt.BuilderFlag.FP16)
     profile = builder.create_optimization_profile()
@@ -72,8 +74,9 @@ def convert_onnx_to_trt(trt_model, onnx_model, fp16):
                 print(parser.get_error(error))
             raise ValueError('failed to parse {}'.format(onnx_model))
     # set input shapes
-    for i in range(len(input_names)):
-        profile.set_shape(input_names[i], _min_shape[i], _opt_shape[i], _max_shape[i])
+    trt_kwargs = get_trt_kwargs()
+    for i in range(len(trt_kwargs['input_names'])):
+        profile.set_shape(trt_kwargs['input_names'][i], trt_kwargs['min_shape'][i], trt_kwargs['opt_shape'][i], trt_kwargs['max_shape'][i])
     tensor_dtype = trt.DataType.HALF if fp16 else trt.DataType.FLOAT
     # set input and output data type
     for i in range(network.num_inputs):
@@ -87,3 +90,48 @@ def convert_onnx_to_trt(trt_model, onnx_model, fp16):
     # save trt engine
     with open(trt_model, "wb") as f:
         f.write(engine_bytes)
+    logging.info("Succesfully convert onnx to trt...")
+
+    # import tensorrt as trt
+    # trt.init_libnvinfer_plugins(None, "")
+    # _min_shape = [(2, 80, 4), (2, 1, 4), (2, 80, 4), (2,), (2, 80), (2, 80, 4)]
+    # _opt_shape = [(2, 80, 193), (2, 1, 193), (2, 80, 193), (2,), (2, 80), (2, 80, 193)]
+    # _max_shape = [(2, 80, 6800), (2, 1, 6800), (2, 80, 6800), (2,), (2, 80), (2, 80, 6800)]
+    # input_names = ["x", "mask", "mu", "t", "spks", "cond"]
+
+    # print( "" )
+    # logging.info(">> 转换 onnx模型 Converting onnx to trt...")
+    # print( "" )
+    
+    # network_flags = 1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+    # logger = trt.Logger(trt.Logger.INFO)
+    # builder = trt.Builder(logger)
+    # network = builder.create_network(network_flags)
+    # parser = trt.OnnxParser(network, logger)
+    # config = builder.create_builder_config()
+    # config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 30)  # 1GB
+    # if fp16:
+    #     config.set_flag(trt.BuilderFlag.FP16)
+    # profile = builder.create_optimization_profile()
+    # # load onnx model
+    # with open(onnx_model, "rb") as f:
+    #     if not parser.parse(f.read()):
+    #         for error in range(parser.num_errors):
+    #             print(parser.get_error(error))
+    #         raise ValueError('failed to parse {}'.format(onnx_model))
+    # # set input shapes
+    # for i in range(len(input_names)):
+    #     profile.set_shape(input_names[i], _min_shape[i], _opt_shape[i], _max_shape[i])
+    # tensor_dtype = trt.DataType.HALF if fp16 else trt.DataType.FLOAT
+    # # set input and output data type
+    # for i in range(network.num_inputs):
+    #     input_tensor = network.get_input(i)
+    #     input_tensor.dtype = tensor_dtype
+    # for i in range(network.num_outputs):
+    #     output_tensor = network.get_output(i)
+    #     output_tensor.dtype = tensor_dtype
+    # config.add_optimization_profile(profile)
+    # engine_bytes = builder.build_serialized_network(network, config)
+    # # save trt engine
+    # with open(trt_model, "wb") as f:
+    #     f.write(engine_bytes)
